@@ -34,6 +34,13 @@ class F_C():
         optimizer.step(self.w, self.dw)
         optimizer.step(self.b, self.db)
         
+
+class CNN():
+    # https://colab.research.google.com/drive/1J53dKIqdllpbZ_XFizzeO5k6Ho1T7fhN
+    def __init__(self, n_in, n_out):
+        pass
+
+
 # ReLU
 class ReLU():
     def forward(self, x):

@@ -1,4 +1,4 @@
-from mynn import FC
+from fc import FC
 from lossfunctions import mse, dmse
 from optimizers import SGD
 import numpy as np
