@@ -5,7 +5,7 @@ class F_C():
     def __init__(self, n_in, n_out):
         self.n_in = n_in
         self.n_out = n_out
-        self.w = winit.lecun(n_in, n_out)
+        self.w = winit.lecun_fc(n_in, n_out)
         self.b = winit.bias_init(n_out)
     
     def forward(self, input):
@@ -36,9 +36,39 @@ class F_C():
         
 
 class CNN():
-    # https://colab.research.google.com/drive/1J53dKIqdllpbZ_XFizzeO5k6Ho1T7fhN
-    def __init__(self, n_in, n_out):
-        pass
+    # https://ieeexplore.ieee.org/document/726791
+    def __init__(self, 
+                input_size: '[height, width, chanel]', 
+                n_feature_maps, 
+                receptive_field_size: '[height, width]',
+                step):
+        self.input_size = input_size
+        self.n_feature_maps = n_feature_maps
+        self.receptive_field_size = receptive_field_size
+        self.step = step
+
+        self.fan_in = self.input_size[0]*self.input_size[1]*self.input_size[2]
+        self.kernel = winit.lecun(self.input_size[0], self.input_size[1], self.n_feature_maps, self.fan_in)
+        self.bias = [0]*self.n_feature_maps
+
+    def forward(self, input: '[height][width][chanel]'):
+        h_offset = int(self.receptive_field_size[0]/2)
+        w_offset = int(self.receptive_field_size[1]/2)
+        out = [[[0 for _ in range(self.n_feature_maps)] 
+            for _ in range(self.input_size[1] - 2*w_offset)] 
+            for _ in range(self.input_size[0] - 2*h_offset)]
+
+
+        for fm in range(self.n_feature_maps): # for each output fm
+            for h in range(self.input_size[0] - 2*h_offset): # scan the image
+                for w in range(self.input_size[1] - 2*w_offset):
+                    for ch in range(self.input_size[2]): # for each input chanel
+                        for i in range(-h_offset, h_offset + 1): # scan the receptive field
+                            for j in range(-w_offset, w_offset + 1):
+                                out[h][w][fm] += self.kernel[h][w][fm] * input[h + i][w + j][ch]
+                out[h][w][fm] += self.bias[fm]
+
+        return out
 
 
 # ReLU
