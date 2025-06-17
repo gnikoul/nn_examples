@@ -1,4 +1,4 @@
-from layers import F_C, ReLU, Tanh, softmax, leaky_relu, leaky_relu_deriv
+from layers import F_C, ReLU, Tanh, softmax, Leaky_ReLU
 from types import SimpleNamespace
 
 

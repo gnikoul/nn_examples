@@ -1,15 +1,14 @@
 from math import sqrt
 from numpy import random
+import numpy
 random.seed(12345)
 
 
-# ***************** CNN **********************
-def lecun(w, h, ch, fan_in):
-    m = 2.4/fan_in
-    return random.uniform(low=-m, high=m, size=(w, h, ch)).tolist()
-# ********************************************
-def zeros(n):
-    return [0] * n
+def zeros(shape):
+    return numpy.zeros(shape).tolist()
+
+def rand(low = -1, high = 1, size=1):
+    return random.uniform(low, high, size=size).tolist()
 
 def lecun_fc(n_in, n_out):
     return random.uniform(low=-sqrt(3/n_in), high=sqrt(3/n_in), size=(n_in, n_out)).tolist()

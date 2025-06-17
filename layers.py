@@ -1,7 +1,9 @@
 import winit
+from winit import zeros
 from math import exp
+import math
 
-class F_C():
+class FC():
     def __init__(self, n_in, n_out):
         self.n_in = n_in
         self.n_out = n_out
@@ -37,72 +39,169 @@ class F_C():
 
 class CNN():
     # https://ieeexplore.ieee.org/document/726791
-    def __init__(self, 
-                input_size: '[height, width, chanel]', 
+    def __init__(self,
+                n_input_ch,
                 n_feature_maps, 
                 receptive_field_size: '[height, width]',
                 step):
-        self.input_size = input_size
         self.n_feature_maps = n_feature_maps
         self.receptive_field_size = receptive_field_size
         self.step = step
 
-        self.fan_in = self.input_size[0]*self.input_size[1]*self.input_size[2]
-        self.kernel = winit.lecun(self.input_size[0], self.input_size[1], self.n_feature_maps, self.fan_in)
-        self.bias = [0]*self.n_feature_maps
+        self.fan_in = self.receptive_field_size[0]*self.receptive_field_size[1]
+        m = 2.4/self.fan_in
+        size = (self.receptive_field_size[0], self.receptive_field_size[1], n_input_ch, self.n_feature_maps)
+
+        self.kernel = winit.rand(low = -m, high= m, size=size)
+        self.bias = winit.zeros(self.n_feature_maps)
 
     def forward(self, input: '[height][width][chanel]'):
-        h_offset = int(self.receptive_field_size[0]/2)
-        w_offset = int(self.receptive_field_size[1]/2)
-        out = [[[0 for _ in range(self.n_feature_maps)] 
-            for _ in range(self.input_size[1] - 2*w_offset)] 
-            for _ in range(self.input_size[0] - 2*h_offset)]
+        h_offset_front = int(self.receptive_field_size[0]/2)
+        h_offset_back = int(self.receptive_field_size[0]/2) + (self.receptive_field_size[0]%2 - 1) 
+        w_offset_front = int(self.receptive_field_size[1]/2)
+        w_offset_back = int(self.receptive_field_size[1]/2) + (self.receptive_field_size[1]%2 - 1) 
+        
+        h_range = range(h_offset_back, len(input) - h_offset_front, self.step)
+        w_range = range(w_offset_back, len(input[0]) - w_offset_front, self.step)
+        fm_range = range(self.n_feature_maps)
+
+        out = zeros((len(h_range), len(w_range), len(fm_range)))
 
 
-        for fm in range(self.n_feature_maps): # for each output fm
-            for h in range(self.input_size[0] - 2*h_offset): # scan the image
-                for w in range(self.input_size[1] - 2*w_offset):
-                    for ch in range(self.input_size[2]): # for each input chanel
-                        for i in range(-h_offset, h_offset + 1): # scan the receptive field
-                            for j in range(-w_offset, w_offset + 1):
-                                out[h][w][fm] += self.kernel[h][w][fm] * input[h + i][w + j][ch]
-                out[h][w][fm] += self.bias[fm]
+        for fm in fm_range: # for each output fm
+            for h in h_range: # scan the image
+                out_h = h - h_offset_back - h*(self.step-1)
+                for w in w_range:
+                    out_w = w - h_offset_back - w*(self.step-1)
+                    for ch in range(len(input[0][0])): # for each input chanel
+                        for i in range(-h_offset_back, h_offset_front + 1): # scan the receptive field
+                            for j in range(-w_offset_back, w_offset_front + 1):
+                                out[out_h][out_w][fm] += self.kernel[i + h_offset_back][j + w_offset_back][ch][fm] * input[h + i][w + j][ch]
+                out[out_h][out_w][fm] += self.bias[fm]
 
         return out
 
+class AVRPOLL():
+    def __init__(self,
+                 n_feature_maps,
+                 receptive_field_size: '[height, width]',
+                 step):
+        self.n_feature_maps = n_feature_maps
+        self.receptive_field_size = receptive_field_size
+        self.step = step
 
-# ReLU
+        self.fan_in = self.receptive_field_size[0]*self.receptive_field_size[1]
+        self.coef = winit.rand(size = self.n_feature_maps)
+        self.bias = winit.zeros(self.n_feature_maps)
+
+    def forward(self, input: '[height][width][chanel]'):
+        h_offset_front = int(self.receptive_field_size[0]/2)
+        h_offset_back = int(self.receptive_field_size[0]/2) + (self.receptive_field_size[0]%2 - 1) 
+        w_offset_front = int(self.receptive_field_size[1]/2)
+        w_offset_back = int(self.receptive_field_size[1]/2) + (self.receptive_field_size[1]%2 - 1) 
+        
+        h_range = range(h_offset_back, len(input) - h_offset_front, self.step)
+        w_range = range(w_offset_back, len(input[0]) - w_offset_front, self.step)
+        fm_range = range(self.n_feature_maps)
+
+        out = zeros((len(h_range), len(w_range), len(fm_range)))
+
+
+        for fm in fm_range: # for each output fm
+            for h in h_range: # scan the image
+                out_h = h - h_offset_back - h*(self.step-1)
+                for w in w_range:
+                    out_w = w - h_offset_back - w*(self.step-1)
+                    for ch in range(len(input[0][0])): # for each input chanel
+                        for i in range(-h_offset_back, h_offset_front + 1): # scan the receptive field
+                            for j in range(-w_offset_back, w_offset_front + 1):
+                                #print(fm, ' ', h, ' ', w, ' ', ch, ' ', i, ' ', j)
+                                out[out_h][out_w][fm] += input[h + i][w + j][ch]
+                n_of_inp = self.receptive_field_size[0]*self.receptive_field_size[1]
+                out[out_h][out_w][fm] = self.coef[fm] * out[out_h][out_w][fm]/n_of_inp + self.bias[fm]   
+
+        return out
+
+# Activation
+def apply_recursive(x, func):
+    if isinstance(x, list):
+        return [apply_recursive(xi, func) for xi in x]
+    else:
+        return func(x)
+
+def zip_recursive(x, y, func):
+    if isinstance(x, list) and isinstance(y, list):
+        return [zip_recursive(xi, yi, func) for xi, yi in zip(x, y)]
+    else:
+        return func(x, y)
+
 class ReLU():
     def forward(self, x):
-        return [max(0, xi) for xi in x]
-    
+        return apply_recursive(x, lambda xi: max(0, xi))
     def forward4train(self, x):
         return self.forward(x)
-
     def backward(self, args):
-        return [go if xi > 0 else 0 for xi, go in zip(args.x, args.grad_output)]
+        return zip_recursive(args.x, args.grad_output, lambda xi, go: go if xi > 0 else 0)
 
-# Leaky ReLU
-def leaky_relu(x, alpha=0.01):
-    return [xi if xi > 0 else alpha * xi for xi in x]
 
-def leaky_relu_deriv(x, grad_output, alpha=0.01):
-    return [go if xi > 0 else alpha * go for xi, go in zip(x, grad_output)]
 
-import math
+class Leaky_ReLU():
+    def __init__(self, alpha=0.01):
+        self.alpha = alpha
+    def forward(self, x):
+        return apply_recursive(x, lambda xi: xi if xi > 0 else self.alpha * xi)
+    def backward(self, args):
+        return zip_recursive(args.x, args.grad_output,
+                             lambda xi, go: go if xi > 0 else self.alpha * go)
 
-# Tanh
+
+
 class Tanh():
     def forward(self, x):
-        return [math.tanh(xi) for xi in x]
-    
+        return apply_recursive(x, math.tanh)
     def forward4train(self, x):
         return self.forward(x)
-
     def backward(self, args):
-        return [go * (1 - math.tanh(xi) ** 2) for xi, go in zip(args.x, args.grad_output)]
+        return zip_recursive(
+            args.x, args.grad_output,
+            lambda xi, go: go * (1 - math.tanh(xi) ** 2))
 
-# Softmax
+
+class Sigmoid():
+    def forward(self, x):
+        return apply_recursive(x, lambda xi: 1 / (1 + math.exp(-xi)))
+    def forward4train(self, x):
+        return self.forward(x)
+    def backward(self, args):
+        return zip_recursive(
+            args.x, args.grad_output,
+            lambda xi, go: go * self.sigmoid_scalar(xi) * (1 - self.sigmoid_scalar(xi)))
+    def sigmoid_scalar(self, xi):
+        return 1 / (1 + math.exp(-xi))
+
+
+# Classification
 def softmax(x):
     s = sum([exp(xi) for xi in x])
     return [exp(xi)/s for xi in x]
+
+
+# General 
+
+def shape(x):
+    shape = []
+    while isinstance(x, list):
+        shape.append(len(x))
+        if len(x) == 0:
+            break
+        x = x[0]
+    return tuple(shape)
+
+def flatten(x):
+    if isinstance(x, list):
+        result = []
+        for xi in x:
+            result.extend(flatten(xi))
+        return result
+    else:
+        return [x]
