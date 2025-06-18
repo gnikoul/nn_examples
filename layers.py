@@ -2,6 +2,7 @@ import winit
 from winit import zeros
 from math import exp
 import math
+import numpy as np
 
 class FC():
     def __init__(self, n_in, n_out):
@@ -69,19 +70,52 @@ class CNN():
 
 
         for fm in fm_range: # for each output fm
-            for h in h_range: # scan the image
-                out_h = h - h_offset_back - h*(self.step-1)
-                for w in w_range:
-                    out_w = w - h_offset_back - w*(self.step-1)
+            for out_h, h in enumerate(h_range): # scan the image # out_h = h - h_offset_back - h*(self.step-1)
+                for out_w, w in enumerate(w_range): # out_w = w - h_offset_back - w*(self.step-1)
                     for ch in range(len(input[0][0])): # for each input chanel
                         for i in range(-h_offset_back, h_offset_front + 1): # scan the receptive field
                             for j in range(-w_offset_back, w_offset_front + 1):
                                 out[out_h][out_w][fm] += self.kernel[i + h_offset_back][j + w_offset_back][ch][fm] * input[h + i][w + j][ch]
-                out[out_h][out_w][fm] += self.bias[fm]
+                    out[out_h][out_w][fm] += self.bias[fm]
 
         return out
+    
+    def forward4train(self, input):
+        self.last_input = input
+        return self.forward(input)
 
-class AVRPOLL():
+    def backward(self, args):
+        # args.grad_output shape: [out_h][out_w][n_feature_maps]
+        input = self.last_input
+        h_offset_front = int(self.receptive_field_size[0]/2)
+        h_offset_back = int(self.receptive_field_size[0]/2) + (self.receptive_field_size[0]%2 - 1) 
+        w_offset_front = int(self.receptive_field_size[1]/2)
+        w_offset_back = int(self.receptive_field_size[1]/2) + (self.receptive_field_size[1]%2 - 1) 
+        
+        h_range = range(w_offset_back, len(input) - h_offset_front, self.step)
+        w_range = range(w_offset_back, len(input[0]) - w_offset_front, self.step)
+        fm_range = range(self.n_feature_maps)
+
+        # Initialize gradients
+        self.dkernel = np.zeros_like(self.kernel)
+        self.dbias = np.zeros_like(self.bias)
+        grad_input = np.zeros_like(input)
+
+        for fm in fm_range:
+            for h_idx, h in enumerate(h_range):
+                for w_idx, w in enumerate(w_range):
+                    grad = args.grad_output[h_idx][w_idx][fm]
+                    for ch in range(len(input[0][0])):
+                        for i in range(-h_offset_back, h_offset_front + 1):
+                            for j in range(-w_offset_back, w_offset_front + 1):
+                                # Grad w.r.t. kernel
+                                self.dkernel[i + h_offset_back][j + w_offset_back][ch][fm] += input[h + i][w + j][ch] * grad
+                                # Grad w.r.t. input (for backprop)
+                                grad_input[h + i][w + j][ch] += self.kernel[i + h_offset_back][j + w_offset_back][ch][fm] * grad
+                    # Grad w.r.t. bias
+                    self.dbias[fm] += grad
+
+class AVRPOOL():
     def __init__(self,
                  n_feature_maps,
                  receptive_field_size: '[height, width]',
@@ -91,7 +125,7 @@ class AVRPOLL():
         self.step = step
 
         self.fan_in = self.receptive_field_size[0]*self.receptive_field_size[1]
-        self.coef = winit.rand(size = self.n_feature_maps)
+        self.coef = winit.rand(size=self.n_feature_maps)
         self.bias = winit.zeros(self.n_feature_maps)
 
     def forward(self, input: '[height][width][chanel]'):
@@ -106,21 +140,59 @@ class AVRPOLL():
 
         out = zeros((len(h_range), len(w_range), len(fm_range)))
 
-
-        for fm in fm_range: # for each output fm
-            for h in h_range: # scan the image
-                out_h = h - h_offset_back - h*(self.step-1)
-                for w in w_range:
-                    out_w = w - h_offset_back - w*(self.step-1)
-                    for ch in range(len(input[0][0])): # for each input chanel
-                        for i in range(-h_offset_back, h_offset_front + 1): # scan the receptive field
+        for fm in fm_range:
+            for out_h, h in enumerate(h_range):
+                for out_w, w in enumerate(w_range):
+                    for ch in range(len(input[0][0])):
+                        for i in range(-h_offset_back, h_offset_front + 1):
                             for j in range(-w_offset_back, w_offset_front + 1):
-                                #print(fm, ' ', h, ' ', w, ' ', ch, ' ', i, ' ', j)
                                 out[out_h][out_w][fm] += input[h + i][w + j][ch]
-                n_of_inp = self.receptive_field_size[0]*self.receptive_field_size[1]
-                out[out_h][out_w][fm] = self.coef[fm] * out[out_h][out_w][fm]/n_of_inp + self.bias[fm]   
-
+                    n_of_inp = self.receptive_field_size[0]*self.receptive_field_size[1]
+                    out[out_h][out_w][fm] = self.coef[fm] * out[out_h][out_w][fm]/n_of_inp + self.bias[fm]   
         return out
+
+    def forward4train(self, input):
+        self.last_input = input
+        return self.forward(input)
+
+    def backward(self, args):
+        # args.grad_output shape: [out_h][out_w][n_feature_maps]
+        input = self.last_input
+        h_offset_front = int(self.receptive_field_size[0]/2)
+        h_offset_back = int(self.receptive_field_size[0]/2) + (self.receptive_field_size[0]%2 - 1) 
+        w_offset_front = int(self.receptive_field_size[1]/2)
+        w_offset_back = int(self.receptive_field_size[1]/2) + (self.receptive_field_size[1]%2 - 1) 
+        
+        h_range = range(w_offset_back, len(input) - h_offset_front, self.step)
+        w_range = range(w_offset_back, len(input[0]) - w_offset_front, self.step)
+        fm_range = range(self.n_feature_maps)
+
+        n_of_inp = self.receptive_field_size[0]*self.receptive_field_size[1]
+        grad_input = zeros_like(input)
+        self.dcoef = zeros_like(self.coef)
+        self.dbias = zeros_like(self.bias)
+
+        for fm in fm_range:
+            for out_h, h in enumerate(h_range):
+                for out_w, w in enumerate(w_range):
+                    grad = args.grad_output[out_h][out_w][fm]
+                    # Gradient w.r.t. coef
+                    sum_pool = 0
+                    for ch in range(len(input[0][0])):
+                        for i in range(-h_offset_back, h_offset_front + 1):
+                            for j in range(-w_offset_back, w_offset_front + 1):
+                                sum_pool += input[h + i][w + j][ch]
+                                # Gradient w.r.t. input
+                                grad_input[h + i][w + j][ch] += grad * self.coef[fm] / n_of_inp
+                    self.dcoef[fm] += grad * sum_pool / n_of_inp
+                    # Gradient w.r.t. bias
+                    self.dbias[fm] += grad
+
+        return grad_input
+
+    def optimize(self, optimizer):
+        optimizer.step(self.coef, self.dcoef)
+        optimizer.step(self.bias, self.dbias)
 
 # Activation
 def apply_recursive(x, func):
@@ -157,14 +229,17 @@ class Leaky_ReLU():
 
 
 class Tanh():
+    def __init__(self, a = 1, s = 1):
+        self.a = a
+        self.s = s
     def forward(self, x):
-        return apply_recursive(x, math.tanh)
+        return apply_recursive(x, lambda xi: self.a * math.tanh(self.s * xi))
     def forward4train(self, x):
         return self.forward(x)
     def backward(self, args):
         return zip_recursive(
             args.x, args.grad_output,
-            lambda xi, go: go * (1 - math.tanh(xi) ** 2))
+            lambda xi, go: go * self.a * self.s * (1 - math.tanh(self.s * xi) ** 2))
 
 
 class Sigmoid():
